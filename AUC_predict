@@ -1,0 +1,47 @@
+import os
+import theano
+import pylearn2
+import pyroc # https://github.com/marcelcaraciolo/PyROC
+import pickle as pkl
+import sys
+import numpy as np
+
+def fprop(model, X, layeridx=-1):
+    '''
+Propagate the data through network and return
+activation in layer layeridx. (-1 means last layer)
+'''
+    X_theano = model.get_input_space().make_theano_batch()
+    Y_theano = X_theano # if layeridx == 0
+    if layeridx == -1:
+        Y_theano = model.fprop(X_theano)
+    else:
+        for layer in model.layers[:layeridx]:
+            Y_theano = layer.fprop(Y_theano)
+    f = theano.function( [X_theano], Y_theano )
+    return f(X)
+
+if __name__=='__main__':
+
+    filename = 'tryhard.pkl'
+    dataname = 'higgs'
+
+    # Load pylearn2 model object.
+    print 'Loading model...'
+    model = pkl.load(open(filename,'r'))
+    
+    data_train = np.loadtxt( 'training.csv', delimiter=',', skiprows=1, converters={32: lambda x:int(x=='s'.encode('utf-8')) } )
+    rng = np.random.RandomState(42)
+    r =np.random.rand(data_train.shape[0])
+    X_valid = data_train[:,1:31][r>=.7]
+    y_valid = data_train[:,32].reshape((-1,1))[r>=.7]
+    
+    # Predict.
+    print 'Making predictions...'
+    Yhat = fprop(model, X_valid)
+    # Compute area under the ROC curve.
+    print 'Computing AUC...'
+    auc = pyroc.ROCData(zip(y_valid, Yhat)).auc()
+    #error_test = model.monitor.channels['test_y_kl'].val_record[-1]
+    print 'AUC=%f, Dataset=%s, Model File=%s' % (auc, dataname, filename)
+
